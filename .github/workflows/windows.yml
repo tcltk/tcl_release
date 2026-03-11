@@ -104,7 +104,7 @@ jobs:
           tar -xzf ${{ env.TCL_DOWNLOAD_FILE }}
           tar -xzf ${{ env.TK_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkgs
           tar -xzf ${{ env.TCLLIB_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkgs
-          tar -xzf ${{ env.TKLIB_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkg
+          tar -xzf ${{ env.TKLIB_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkgs
           
       - name: Init MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -158,6 +158,7 @@ jobs:
         with:
           name: "Tcl-Tk Release Distribution (Win64)"
           path: ${{ env.INSTALLDIR }} 
+
 
 
 
