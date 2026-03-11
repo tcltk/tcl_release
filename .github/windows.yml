@@ -1,0 +1,186 @@
+name: Windows
+on:
+  workflow_dispatch:
+    inputs:
+      tcl-tags:
+        required: true
+        type: choice
+        options:
+          - '["core-9-0-3"]'
+          - '["core-9-1-a1-rc"]'
+        default: '["core-9-0-3"]'
+    
+permissions:
+  contents: read
+env:
+  ERROR_ON_FAILURES: 1
+jobs:
+  msvc:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: powershell
+    # Using powershell means we need to explicitly stop on failure
+    strategy:
+      matrix:
+        config:
+          - ""
+          # - "OPTS=symbols"
+          # - "OPTS=static"
+        tcl-tag: ${{ fromJSON(github.event.inputs.tcl-tags) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        timeout-minutes: 5
+        
+      - name: Prepare
+        run: |
+          mkdir "C:\Tcl-tk"
+          Add-Content -Path $env:GITHUB_ENV -Value "INSTALLDIR=C:\Tcl-tk"
+          if ( '${{ matrix.tcl-tag }}' -match 'core-9-0-3' ) {
+            # Tcl and Tk settings
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLSH=C:\Tcl-tk\bin\tclsh90.exe"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCL_VERSION=9.0.3"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCL_DOWNLOAD_DIR=http://prdownloads.sourceforge.net/tcl/"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCL_DOWNLOAD_FILE=tcl9.0.3-src.tar.gz"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCL_DOWNLOAD_HASH=820AEED1E4E1A89038D0302D2F839E84"
+            Add-Content -Path $env:GITHUB_ENV -Value "TK_DOWNLOAD_FILE=tk9.0.3-src.tar.gz"
+            Add-Content -Path $env:GITHUB_ENV -Value "TK_DOWNLOAD_HASH=72F9C4005EAAF3B9C994BDA74324C28E"
+
+            # Tcllib and Tklib settings
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLLIB_VERSION=2.0"
+            Add-Content -Path $env:GITHUB_ENV -Value "TKLIB_VERSION=0.9"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLLIB_DOWNLOAD_DIR=http://prdownloads.sourceforge.net/tcllib/"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLLIB_DOWNLOAD_FILE=tcllib-2.0.tar.gz"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLLIB_DOWNLOAD_HASH=7A6583B88160FE2040FAB74309881C3E"
+            Add-Content -Path $env:GITHUB_ENV -Value "TKLIB_DOWNLOAD_FILE=tklib-0.9.tar.gz"
+            Add-Content -Path $env:GITHUB_ENV -Value "TKLIB_DOWNLOAD_HASH=650A65B431987EB1AFC4481D91B9CF0F"
+
+            Add-Content -Path $env:GITHUB_ENV -Value "TCL_BUILD_DIR=tcl9.0.3"
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLLIB_BUILD_DIR=tcllib-2.0"
+            Add-Content -Path $env:GITHUB_ENV -Value "TKLIB_BUILD_DIR=tklib-0.9"
+          } elseif ( '${{ matrix.tcl-tag }}' -match 'core-9-1-.*' ) {
+            Add-Content -Path $env:GITHUB_ENV -Value "TCLSH=C:\Tcl-tk\bin\tclsh91.exe"
+          } else {
+            throw "Unable to set value for TCLSH variable"
+          }
+        working-directory: .
+
+      - name: Download Tcl source
+        shell: powershell
+        run: |
+          curl.exe -L -o ${{ env.TCL_DOWNLOAD_FILE }} "${{ env.TCL_DOWNLOAD_DIR }}${{ env.TCL_DOWNLOAD_FILE }}"
+          curl.exe -L -o ${{ env.TK_DOWNLOAD_FILE }}  "${{ env.TCL_DOWNLOAD_DIR }}${{ env.TK_DOWNLOAD_FILE }}"
+          curl.exe -L -o ${{ env.TCLLIB_DOWNLOAD_FILE }} "${{ env.TCLLIB_DOWNLOAD_DIR }}${{ env.TCLLIB_DOWNLOAD_FILE }}" 
+          curl.exe -L -o ${{ env.TKLIB_DOWNLOAD_FILE }}  "${{ env.TCLLIB_DOWNLOAD_DIR }}${{ env.TKLIB_DOWNLOAD_FILE }}"
+
+      - name: Verify downloads
+        shell: powershell
+        run: |
+          if ( (Get-FileHash "${{ env.TCL_DOWNLOAD_FILE }}" -Algorithm MD5).Hash -ne "${{ env.TCL_DOWNLOAD_HASH }}" ) {
+            throw "MD5 Checksum hash check failed for ${{ env.TCL_DOWNLOAD_FILE }}"
+          } else {
+            echo "${{ env.TCL_DOWNLOAD_FILE }} successfully downloaded from SourceForge."
+          }
+          if ( (Get-FileHash "${{ env.TK_DOWNLOAD_FILE }}" -Algorithm MD5).Hash -ne "${{ env.TK_DOWNLOAD_HASH }}" ) {
+            throw "MD5 Checksum hash check failed for ${{ env.TK_DOWNLOAD_FILE }}"
+          } else {
+            echo "${{ env.TK_DOWNLOAD_FILE }} successfully downloaded from SourceForge."
+          }
+          if ( (Get-FileHash "${{ env.TCLLIB_DOWNLOAD_FILE }}" -Algorithm MD5).Hash -ne "${{ env.TCLLIB_DOWNLOAD_HASH }}" ) {
+            throw "MD5 Checksum hash check failed for ${{ env.TCLLIB_DOWNLOAD_FILE }}"
+          } else {
+            echo "${{ env.TCLLIB_DOWNLOAD_FILE }} successfully downloaded from SourceForge."
+          }
+          if ( (Get-FileHash "${{ env.TKLIB_DOWNLOAD_FILE }}" -Algorithm MD5).Hash -ne "${{ env.TKLIB_DOWNLOAD_HASH }}" ) {
+            throw "MD5 Checksum hash check failed for ${{ env.TKLIB_DOWNLOAD_FILE }}"
+          } else {
+            echo "${{ env.TKLIB_DOWNLOAD_FILE }} successfully downloaded from SourceForge."
+          }
+                    
+      - name: Extract source archives
+        shell: powershell
+        run: |
+          tar -xzf ${{ env.TCL_DOWNLOAD_FILE }}
+          tar -xzf ${{ env.TK_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkgs
+          tar -xzf ${{ env.TCLLIB_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkgs
+          tar -xzf ${{ env.TKLIB_DOWNLOAD_FILE }} -C ${{ env.TCL_BUILD_DIR }}/pkgs
+          
+      - name: Init MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build Tcl/Tk (${{ matrix.config }})
+        run: |
+          &nmake -f makefile.vc release ${{ matrix.config }} INSTALLDIR=$Env:INSTALLDIR
+        working-directory: ${{ env.TCL_BUILD_DIR }}/win
+
+      - name: Build Test Harness ${{ matrix.config }}
+        if: 1 == 0
+        run: |
+          &nmake -f makefile.vc ${{ matrix.config }} tcltest
+          if ($lastexitcode -ne 0) {
+             throw "nmake exit code: $lastexitcode"
+          }
+        timeout-minutes: 5
+        working-directory: ${{ env.TCL_BUILD_DIR }}/win
+
+      - name: Run Tests ${{ matrix.config }}
+        if: 1 == 0
+        run: |
+          Write-Output "::add-matcher::.github\tcltest.json"
+          &nmake -f makefile.vc ${{ matrix.config }} test
+          if ($lastexitcode -ne 0) {
+             throw "nmake exit code: $lastexitcode"
+          }
+        timeout-minutes: 30
+        working-directory: ${{ env.TCL_BUILD_DIR }}/win
+        env:
+          ERROR_ON_FAILURES: 1
+
+      - name: Install Tcl/Tk  (${{ matrix.config }})
+        run: |
+          &nmake -f makefile.vc install ${{ matrix.config }} INSTALLDIR=$Env:INSTALLDIR
+          if ($lastexitcode -ne 0) {
+             throw "nmake exit code: $lastexitcode"
+          }
+        working-directory: ${{ env.TCL_BUILD_DIR }}/win
+
+      - name: Build tcllib and tklib
+        shell: powershell
+        run: |
+            ${{ env.TCLSH }} ${{ env.TCL_BUILD_DIR }}/${{ env.TCLLIB_BUILD_DIR }}/installer.tcl -no-gui -html -html-path ${{ env.INSTALLDIR }}/lib -examples -example-path ${{ env.INSTALLDIR }}/lib -pkgs -pkg-path ${{ env.INSTALLDIR }}/lib -apps -app-path ${{ env.INSTALLDIR }}/lib -no-nroff -no-wait
+            ${{ env.TCLSH }} ${{ env.TCL_BUILD_DIR }}/${{ env.TKLIB_BUILD_DIR }}/installer.tcl -no-gui -html -html-path ${{ env.INSTALLDIR }}/lib -examples -example-path ${{ env.INSTALLDIR }}/lib -pkgs -pkg-path ${{ env.INSTALLDIR }}/lib -apps -app-path ${{ env.INSTALLDIR }}/lib -no-nroff -no-wait
+      - name: Upload distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: "Tcl-Tk Release Distribution (Win64)"
+          path: ${{ env.INSTALLDIR }} 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
